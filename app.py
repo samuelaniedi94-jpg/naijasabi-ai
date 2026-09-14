@@ -1,3 +1,4 @@
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from openai import OpenAI
 import json
@@ -202,7 +203,7 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
             }, 500)
 
 
-server = HTTPServer(("0.0.0.0", 8080), NaijaSabiAI)
+server = HTTPServer(("0.0.0.0", int(os.environ.get("PORT", 8080))), NaijaSabiAI)
 
 print("NAIJASABI AI is starting...")
 print("Real AI backend running on port 8080")
