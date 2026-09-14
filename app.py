@@ -202,13 +202,11 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                 "details": error_text
             }, 500)
 
+port = int(os.environ.get("PORT", 8080))
 
-server = HTTPServer(("0.0.0.0", int(os.environ.get("PORT", 8080))), NaijaSabiAI)
+server = HTTPServer(("0.0.0.0", port), NaijaSabiAI)
 
 print("NAIJASABI AI is starting...")
-print("Real AI backend running on port 8080")
-print("Smart web search enabled")
-print("Conversation history optimized")
-print("Rate-limit handling enabled")
+print(f"Real AI backend running on port {port}")
 
 server.serve_forever()
