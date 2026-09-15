@@ -237,6 +237,17 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
 
             conversation = conversation[-10:]
 
+            # Keep total conversation context small to reduce token usage.
+            total_chars = 0
+            limited_conversation = []
+            for item in reversed(conversation):
+                content = item.get("content", "")
+                if total_chars + len(content) > 6000:
+                    break
+                limited_conversation.insert(0, item)
+                total_chars += len(content)
+            conversation = limited_conversation
+
             response_args = {
                 "model": "gpt-5.6-luna",
                 "instructions": NAIJASABI_INSTRUCTIONS,
