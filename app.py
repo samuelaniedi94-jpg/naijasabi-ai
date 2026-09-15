@@ -99,6 +99,33 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                 "status": "online",
                 "message": "NAIJASABI AI is ready"
             })
+        elif self.path == "/test-auth":
+            try:
+                import os
+                import urllib.request
+
+                key = os.environ.get("OPENAI_API_KEY", "")
+                req = urllib.request.Request(
+                    "https://api.openai.com/v1/models",
+                    headers={
+                        "Authorization": f"Bearer {key}"
+                    },
+                    method="GET"
+                )
+
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    self.send_json({
+                        "status": "success",
+                        "http_status": r.status
+                    })
+
+            except Exception as e:
+                print("AUTH TEST ERROR:", repr(e), flush=True)
+                self.send_json({
+                    "status": "failed",
+                    "error": repr(e)
+                }, 500)
+
         elif self.path == "/test-key":
             import os
             key = os.environ.get("OPENAI_API_KEY", "")
