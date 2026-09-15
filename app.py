@@ -99,6 +99,25 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                 "status": "online",
                 "message": "NAIJASABI AI is ready"
             })
+        elif self.path == "/test-network":
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    "https://api.openai.com/v1/models",
+                    method="GET"
+                )
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    self.send_json({
+                        "status": "success",
+                        "http_status": r.status
+                    })
+            except Exception as e:
+                print("NETWORK TEST ERROR:", repr(e), flush=True)
+                self.send_json({
+                    "status": "failed",
+                    "error": repr(e)
+                }, 500)
+
         elif self.path == "/test-openai":
             try:
                 test_response = client.responses.create(
