@@ -99,6 +99,15 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                 "status": "online",
                 "message": "NAIJASABI AI is ready"
             })
+        elif self.path == "/test-key":
+            import os
+            key = os.environ.get("OPENAI_API_KEY", "")
+            self.send_json({
+                "key_present": bool(key),
+                "key_length": len(key),
+                "key_starts_correctly": key.startswith("sk-")
+            })
+
         elif self.path == "/test-network":
             try:
                 import urllib.request
