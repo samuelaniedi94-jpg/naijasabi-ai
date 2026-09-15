@@ -235,6 +235,8 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                     "content": message[:1500]
                 })
 
+            conversation = conversation[-10:]
+
             response_args = {
                 "model": "gpt-5.6-luna",
                 "instructions": NAIJASABI_INSTRUCTIONS,
