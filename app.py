@@ -99,6 +99,22 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                 "status": "online",
                 "message": "NAIJASABI AI is ready"
             })
+        elif self.path == "/test-openai":
+            try:
+                test_response = client.responses.create(
+                    model="gpt-5.6-luna",
+                    input="Reply with exactly: OPENAI CONNECTION OK"
+                )
+                self.send_json({
+                    "status": "success",
+                    "reply": test_response.output_text
+                })
+            except Exception as e:
+                print("OPENAI TEST ERROR:", str(e), flush=True)
+                self.send_json({
+                    "status": "failed",
+                    "error": str(e)
+                }, 500)
         else:
             self.send_json({"error": "Not found"}, 404)
 
