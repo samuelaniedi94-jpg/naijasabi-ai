@@ -189,6 +189,7 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
         except Exception as e:
 
             error_text = str(e)
+            print("OPENAI ERROR:", error_text, flush=True)
 
             if "rate_limit_exceeded" in error_text or "429" in error_text:
                 self.send_json({
