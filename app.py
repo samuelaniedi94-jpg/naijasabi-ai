@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from openai import OpenAI
 import json
 
-client = OpenAI()
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip())
 
 NAIJASABI_INSTRUCTIONS = """
 You are NAIJASABI AI, a Nigerian-focused AI assistant.
