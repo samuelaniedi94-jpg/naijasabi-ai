@@ -244,8 +244,8 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
 
             if isinstance(history, list):
 
-                # Keep the most recent 12 messages for better conversation continuity.
-                recent_history = history[-12:]
+                # Only keep the most recent 6 messages.
+                recent_history = history[-6:]
 
                 for item in recent_history:
                     if not isinstance(item, dict):
