@@ -75,7 +75,89 @@ def initialize_database():
     finally:
         connection.close()
 
+
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip())
+
+
+def get_or_create_default_user():
+    connection = get_db_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT id
+            FROM users
+            ORDER BY id
+            LIMIT 1
+        """)
+
+        row = cursor.fetchone()
+
+        if row:
+            user_id = row[0]
+        else:
+            cursor.execute("""
+                INSERT INTO users DEFAULT VALUES
+                RETURNING id
+            """)
+            user_id = cursor.fetchone()[0]
+
+        connection.commit()
+        cursor.close()
+
+        return user_id
+
+    finally:
+        connection.close()
+
+
+def create_conversation(user_id, title):
+    connection = get_db_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO conversations (user_id, title)
+            VALUES (%s, %s)
+            RETURNING id
+        """, (user_id, title[:200]))
+
+        conversation_id = cursor.fetchone()[0]
+
+        connection.commit()
+        cursor.close()
+
+        return conversation_id
+
+    finally:
+        connection.close()
+
+
+def save_message(conversation_id, role, content):
+    connection = get_db_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO messages (conversation_id, role, content)
+            VALUES (%s, %s, %s)
+        """, (conversation_id, role, content))
+
+        cursor.execute("""
+            UPDATE conversations
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (conversation_id,))
+
+        connection.commit()
+        cursor.close()
+
+    finally:
+        connection.close()
+
 
 NAIJASABI_INSTRUCTIONS = """
 You are NAIJASABI AI, a full-purpose AI assistant built for Nigerians.
@@ -312,6 +394,15 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                 }, 400)
                 return
 
+            # Get the current database user.
+            user_id = get_or_create_default_user()
+
+            # Create a new database conversation for this chat request.
+            conversation_id = create_conversation(user_id, message)
+
+            # Save the user's message permanently.
+            save_message(conversation_id, "user", message)
+
             conversation = []
 
             if isinstance(history, list):
@@ -414,8 +505,13 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
             if response is None:
                 raise last_error
 
+            reply = response.output_text
+
+            # Save the AI response permanently.
+            save_message(conversation_id, "assistant", reply)
+
             self.send_json({
-                "reply": response.output_text
+                "reply": reply
             })
 
         except Exception as e:
