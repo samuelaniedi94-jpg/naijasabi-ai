@@ -24,9 +24,7 @@ def get_db_connection():
         host=parsed.hostname,
         port=parsed.port or 5432,
         database=(parsed.path or "").lstrip("/"),
-        ssl_context=ssl.create_default_context(),
     )
-
 
 def initialize_database():
     connection = get_db_connection()
