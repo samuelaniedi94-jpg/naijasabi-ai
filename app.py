@@ -35,8 +35,27 @@ def initialize_database():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
+                display_name TEXT,
+                email TEXT,
+                external_id TEXT UNIQUE,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             )
+        """)
+
+        # Upgrade an older users table without destroying existing data.
+        cursor.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS display_name TEXT
+        """)
+
+        cursor.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS email TEXT
+        """)
+
+        cursor.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS external_id TEXT
         """)
 
         cursor.execute("""
@@ -79,34 +98,78 @@ def initialize_database():
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip())
 
 
-def get_or_create_default_user():
+def get_or_create_user(external_id, display_name=None, email=None):
+    connection = get_db_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        external_id = (external_id or "").strip()
+
+        if not external_id:
+            raise RuntimeError("external_id is required")
+
+        cursor.execute("""
+            SELECT id, display_name, email
+            FROM users
+            WHERE external_id = %s
+            LIMIT 1
+        """, (external_id,))
+
+        row = cursor.fetchone()
+
+        if row:
+            user_id = row[0]
+
+            if display_name or email:
+                cursor.execute("""
+                    UPDATE users
+                    SET
+                        display_name = COALESCE(%s, display_name),
+                        email = COALESCE(%s, email)
+                    WHERE id = %s
+                """, (display_name, email, user_id))
+
+                connection.commit()
+
+            cursor.close()
+            return user_id
+
+        cursor.execute("""
+            INSERT INTO users (display_name, email, external_id)
+            VALUES (%s, %s, %s)
+            RETURNING id
+        """, (display_name, email, external_id))
+
+        user_id = cursor.fetchone()[0]
+
+        connection.commit()
+        cursor.close()
+
+        return user_id
+
+    finally:
+        connection.close()
+
+
+def get_conversation_owner(conversation_id):
     connection = get_db_connection()
 
     try:
         cursor = connection.cursor()
 
         cursor.execute("""
-            SELECT id
-            FROM users
-            ORDER BY id
+            SELECT user_id
+            FROM conversations
+            WHERE id = %s
             LIMIT 1
-        """)
+        """, (conversation_id,))
 
         row = cursor.fetchone()
 
-        if row:
-            user_id = row[0]
-        else:
-            cursor.execute("""
-                INSERT INTO users DEFAULT VALUES
-                RETURNING id
-            """)
-            user_id = cursor.fetchone()[0]
-
-        connection.commit()
         cursor.close()
 
-        return user_id
+        return row[0] if row else None
 
     finally:
         connection.close()
@@ -387,6 +450,10 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
 
             message = data.get("message", "").strip()
             history = data.get("history", [])
+            conversation_id = data.get("conversation_id")
+            external_id = data.get("external_id", "").strip()
+            display_name = data.get("display_name", "").strip()
+            email = data.get("email", "").strip()
 
             if not message:
                 self.send_json({
@@ -394,14 +461,49 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
                 }, 400)
                 return
 
-            # Get the current database user.
-            user_id = get_or_create_default_user()
+            # Identify the user.
+            # For now the mobile app supplies a persistent profile/device ID.
+            # Real authenticated accounts will replace this with a verified
+            # auth session later.
+            if not external_id:
+                self.send_json({
+                    "error": "USER_ID_REQUIRED"
+                }, 400)
+                return
 
-            # Create a new database conversation for this chat request.
-            conversation_id = create_conversation(user_id, message)
+            user_id = get_or_create_user(
+                external_id,
+                display_name or None,
+                email or None
+            )
+
+            # Continue the existing conversation when possible.
+            if conversation_id:
+                try:
+                    conversation_id = int(conversation_id)
+                except (TypeError, ValueError):
+                    conversation_id = None
+
+            if conversation_id:
+                owner_id = get_conversation_owner(conversation_id)
+
+                if owner_id != user_id:
+                    conversation_id = None
+
+            # Only create a database conversation when this is genuinely
+            # a new chat.
+            if not conversation_id:
+                conversation_id = create_conversation(
+                    user_id,
+                    message
+                )
 
             # Save the user's message permanently.
-            save_message(conversation_id, "user", message)
+            save_message(
+                conversation_id,
+                "user",
+                message
+            )
 
             conversation = []
 
@@ -511,7 +613,8 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
             save_message(conversation_id, "assistant", reply)
 
             self.send_json({
-                "reply": reply
+                "reply": reply,
+                "conversation_id": conversation_id
             })
 
         except Exception as e:
