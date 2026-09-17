@@ -2,6 +2,80 @@ import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from openai import OpenAI
 import json
+import pg8000
+from urllib.parse import urlparse, unquote
+import ssl
+
+
+def get_db_connection():
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is not configured")
+
+    parsed = urlparse(database_url)
+
+    if parsed.scheme not in ("postgres", "postgresql"):
+        raise RuntimeError("Invalid DATABASE_URL scheme")
+
+    return pg8000.connect(
+        user=unquote(parsed.username or ""),
+        password=unquote(parsed.password or ""),
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        database=(parsed.path or "").lstrip("/"),
+        ssl_context=ssl.create_default_context(),
+    )
+
+
+def initialize_database():
+    connection = get_db_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS memories (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                memory TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        connection.commit()
+        cursor.close()
+
+    finally:
+        connection.close()
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip())
 
@@ -364,6 +438,12 @@ class NaijaSabiAI(BaseHTTPRequestHandler):
             }, 500)
 
 port = int(os.environ.get("PORT", 8080))
+
+try:
+    initialize_database()
+    print("DATABASE INITIALIZED", flush=True)
+except Exception as e:
+    print("DATABASE INITIALIZATION ERROR:", repr(e), flush=True)
 
 server = HTTPServer(("0.0.0.0", port), NaijaSabiAI)
 
